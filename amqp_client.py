@@ -23,18 +23,20 @@ class ServiceCreator:
     def __init__(self, url, exchange):
         self.exchange = exchange
         self.params = pika.URLParameters(url)
-        self.connection = pika.BlockingConnection(self.params)
-        self.channel = self.connection.channel()
+        # self.connection = pika.BlockingConnection(self.params)
+        # channel = self.connection.channel()
 
         self.consumer_threads = []
 
     def consume(self, topic, queue="", cb=None):
-        self.channel.exchange_declare(exchange=self.exchange, exchange_type='topic')
+        connection = pika.BlockingConnection(self.params)
+        channel = connection.channel()
+        channel.exchange_declare(exchange=self.exchange, exchange_type='topic')
 
-        result = self.channel.queue_declare(queue=queue, exclusive=False, auto_delete=True)
+        result = channel.queue_declare(queue=queue, exclusive=False, auto_delete=True)
         queue_name = result.method.queue
 
-        self.channel.queue_bind(exchange=self.exchange, queue=queue_name, routing_key=topic)
+        channel.queue_bind(exchange=self.exchange, queue=queue_name, routing_key=topic)
 
         def callback(ch, method, properties, body):
             correlation_id = properties.correlation_id
@@ -48,13 +50,13 @@ class ServiceCreator:
                                      body=ret)
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
-        self.channel.basic_consume(
+        channel.basic_consume(
             queue=queue_name, on_message_callback=callback, auto_ack=False)
 
-        t = threading.Thread(target=self.channel.start_consuming)
+        t = threading.Thread(target=channel.start_consuming)
         self.consumer_threads.append(dict(id=str(uuid.uuid4()), topic=topic, thread=t))
         t.start()
-        # self.channel.start_consuming()
+        # channel.start_consuming()
 
     def rpc_request(self, topic, msg, timeout_sec=0):
         tmp = {"reply_to": str(uuid.uuid4()), "correlation_id": str(uuid.uuid4()), "received": None, "error": None}
@@ -105,10 +107,15 @@ class ServiceCreator:
         return tmp["received"], tmp["error"]
 
     def fire_and_forget(self, topic, msg):
-        self.channel.basic_publish(exchange=self.exchange,
-                                   routing_key=topic,
-                                   body=msg)
+        connection = pika.BlockingConnection(self.params)
+        channel = connection.channel()
+        channel.basic_publish(exchange=self.exchange,
+                              routing_key=topic,
+                              body=msg)
 
-    def close(self):
-        self.channel.close()
-        self.connection.close()
+        channel.close()
+        connection.close()
+
+    # def close(self):
+    #     channel.close()
+    #     self.connection.close()

@@ -31,7 +31,7 @@ class ServiceCreator:
     def consume(self, topic, queue="", cb=None):
         connection = pika.BlockingConnection(self.params)
         channel = connection.channel()
-        channel.exchange_declare(exchange=self.exchange, exchange_type='topic')
+        channel.exchange_declare(exchange=self.exchange, exchange_type='topic', durable=True)
 
         result = channel.queue_declare(queue=queue, exclusive=False, auto_delete=True)
         queue_name = result.method.queue
